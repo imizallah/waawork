@@ -3,16 +3,42 @@ const app = express();
 const port= 7000;
 const logger = require('morgan');
 const path = require('path');
+const flash = require('connect-flash');
 const mongoose = require('mongoose');
 const User = require('./models/User.js');
-const bcrypt = require('bcryptjs')
+const bcrypt = require('bcryptjs');
+const cookieParser = require('cookie-parser');
+const session = require('express-session');
+const MongoStore = require('connect-mongo');
+const { globalVariables } = require('./config/globalConfig');
 
 
 // DB connection
 
 mongoose.connect("mongodb://localhost/MyBlog")
-.then(response => console.log('Database Connected Successfully'))
-.catch(error => console.log(`Database connection: ${error}`))
+    .then(response => console.log('Database Connected Successfully'))
+    .catch(error => console.log(`Database connection: ${error}`))
+
+// Cookie configuration
+app.use(cookieParser());
+
+// Session configuration
+app.use(session({
+    secret: 'jkjIHJOJbh*&546$%$*UH809()^&7654UGY^&',
+    resave: true,
+    saveUninitialized: true,
+    cookie: {
+        maxAge: Date.now() + 3600000
+    },
+    store: MongoStore.create({
+        mongoUrl: 'mongodb://localhost/MyBlog',
+        ttl: 365 * 24 * 60 * 60 // = 14 days. Default
+    })
+}));
+
+app.use(flash());
+app.use(globalVariables);
+
 // morgan setup
 app.use(logger('dev'));
 
@@ -88,38 +114,40 @@ app.get('/login', (req,res) => {
 app.get('/register', (req,res) => {
     res.render('register');
 });
+
 app.post('/user/register', async (req, res) => {
-    let { userName, password, confirmPassword, email, summary, image} = req.body;
-    if( password.length  < 6){
-        console.log("password must be greater than six")
-    }
-    else if (password != confirmPassword) {
-console.log("password not the same")
-    } 
-    let userExist = await User.findOne({email})
-    if(userExist){
-        console.log('User already exist')
-    }
-    else{   
-const salt = await bcrypt.genSalt(10);
-const hashedPassword = await bcrypt.hash(password, salt)
-        let newUser = new User({
-            userName,
-           password: hashedPassword,
-            email,
-            summary,
-            image
-        })
-       await newUser.save();
-        if(!newUser){
-            console.log('Something went wrong')
-        }else{
-            console.log(`Registration Successful ${newUser}`)
-        }
+    let { 
+        username, 
+        password, 
+        email,
+        confirmPassword, 
+        summary,
+        image
+    } = req.body;
+
+    const userExist = await User.findOne({ email });
+    if (userExist) {
+        req.flash("error-message", "User already exist!!!");
+        return res.redirect("back");
     }
 
-    
-})
+    const salt = await bcrypt.genSalt(10);
+    const hashedPassword = await bcrypt.hash(password, salt);
+
+    const newUser = new User({
+        username,
+        email,
+        password: hashedPassword,
+        summary,
+        image 
+    });
+
+    await newUser.save();
+
+    req.flash("success-message", "Registration successful!!!");
+    res.redirect("/login");
+});
+
 app.get('/newpost', (req,res) => {
     res.render('newPost');
 });
