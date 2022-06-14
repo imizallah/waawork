@@ -171,7 +171,7 @@ app.post('/user/register', async (req, res) => {
         summary,
         image
     } = req.body;
-
+ 
     const userExist = await User.findOne({ email });
     if (userExist) {
         req.flash("error-message", "User already exist!!!");
