@@ -1,6 +1,6 @@
 const express = require('express');
 const app = express();
-const port= 7000;
+const port = 8000;
 const logger = require('morgan');
 const path = require('path');
 const flash = require('connect-flash');
@@ -11,7 +11,9 @@ const cookieParser = require('cookie-parser');
 const session = require('express-session');
 const MongoStore = require('connect-mongo');
 const { globalVariables } = require('./config/globalConfig');
-
+const passport = require('passport');
+const LocalStrategy = require('passport-local').Strategy
+const { isLoggedIn } = require('./config/authorization')
 
 // DB connection
 
@@ -36,6 +38,42 @@ app.use(session({
     })
 }));
 
+// passport configuration
+app.use(passport.initialize());
+app.use(passport.session());
+passport.use(new LocalStrategy({ usernameField: 'email', passReqToCallback: true },
+    async (req, email, password, done) => {
+        await User.findOne({ email })
+            .then((user) => {
+                if (!user) {
+                    return done(null, false, 
+    req.flash('error-message', 'User not found. Please register and try again'))
+              }
+    bcrypt.compare(password, user.password, (err, passwordMatch) => {
+        if(err){
+            return err;
+        }
+        if(!passwordMatch)
+         return done(null, false, req.flash('error-message', 'Incorrect Password'))
+         return done(null, user, req.flash('success-message', 'Login Successfully'));  
+          }); 
+
+            });         
+    }));
+
+passport.serializeUser(function (user, done) {
+    done(null, user.id);
+});
+passport.deserializeUser(function (id, done) {
+    User.findById(id, function(err, user) {
+        done(err, user)
+    })
+})
+
+
+
+
+
 app.use(flash());
 app.use(globalVariables);
 
@@ -48,10 +86,10 @@ app.set('view engine', 'ejs');
 
 app.use(express.static(path.join(__dirname, 'public')));
 app.use(express.json())
-app.use(express.urlencoded({extended : true}))
+app.use(express.urlencoded({ extended: true }))
 
 
-app.get('/', (req,res) => {
+app.get('/', (req, res) => {
     const allPosts = [
         {
             img: '/assets/images/Blogging-pana.svg',
@@ -94,7 +132,7 @@ app.get('/', (req,res) => {
             title: 'Card Title',
             content: "Some quick example text to build on the card title and make up the bulk of the card's content."
         },
-        
+
         {
             img: '/assets/images/image1.jpg',
             title: 'Card Title',
@@ -104,23 +142,32 @@ app.get('/', (req,res) => {
 
 
 
-    res.render('home', {allPosts});
+    res.render('home', { allPosts });
 });
 
-app.get('/login', (req,res) => {
+app.get('/login', (req, res) => {
     res.render('login');
 });
 
-app.get('/register', (req,res) => {
+app.post('/user/login', passport.authenticate('local', {
+    failureRedirect: '/login',
+    successRedirect: '/',
+    
+    session: true
+}) 
+
+)
+
+
+app.get('/register', (req, res) => {
     res.render('register');
 });
 
 app.post('/user/register', async (req, res) => {
-    let { 
-        username, 
-        password, 
+    let {
+        username,
+        password,
         email,
-        confirmPassword, 
         summary,
         image
     } = req.body;
@@ -139,7 +186,7 @@ app.post('/user/register', async (req, res) => {
         email,
         password: hashedPassword,
         summary,
-        image 
+        image
     });
 
     await newUser.save();
@@ -148,11 +195,28 @@ app.post('/user/register', async (req, res) => {
     res.redirect("/login");
 });
 
-app.get('/newpost', (req,res) => {
+app.get('/newpost', (req, res) => {
     res.render('newPost');
 });
 
+app.get('/viewpost', (req, res) => {
+    res.render('viewPost');
+});
 
 
-app.listen(port, ()=> console.log(`Server running on ${port}`));
+app.get('/user/profile', isLoggedIn, (req, res) => {
+    res.render('profile');
+});
+
+app.get('/user/logout', (req, res) => {
+    req.logout( function(err) {
+        if (err) return next(err) 
+    req.flash('success-message', 'User logged out succcessfully')
+    res.redirect('/login')
+ 
+    })
+
+})
+
+app.listen(port, () => console.log(`Server running on ${port}`));
 
